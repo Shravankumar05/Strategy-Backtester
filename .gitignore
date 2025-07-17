@@ -53,3 +53,6 @@ venv.bak/
 
 # Project specific
 .DS_Store
+
+# Pycache
+/__pycache__/
