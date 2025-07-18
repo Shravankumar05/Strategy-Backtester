@@ -33,7 +33,7 @@ class DataFetcher(ABC):
         if missing_columns:
             raise DataError(f"Missing required columns for {symbol}: {missing_columns}")
         
-        df = df.fillna(method='ffill')
+        df = df.ffill()
         df = df.dropna()
         
         if df.empty:
