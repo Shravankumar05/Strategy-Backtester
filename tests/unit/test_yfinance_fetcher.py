@@ -4,7 +4,6 @@ import os
 import tempfile
 import shutil
 import sys
-import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from datetime import date, datetime, timedelta
 from src.backtester.data.fetcher import DataError
