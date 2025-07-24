@@ -262,95 +262,64 @@ class TestSimulationEngine:
             assert isinstance(result.metrics[metric], (int, float))
             assert not np.isnan(result.metrics[metric])
 
-    # ===== TASK 4.5: DECISION LOGGING TESTS =====
-    
     def test_decision_logs_exist(self, engine, sample_data, sample_signals):
         """Test that decision logs are included in simulation results"""
         result = engine.run_simulation(sample_data, sample_signals)
-        
-        # Check that decision_logs attribute exists
         assert hasattr(result, 'decision_logs')
         assert isinstance(result.decision_logs, list)
         assert len(result.decision_logs) > 0
     
     def test_signal_received_logging(self, engine, sample_data, sample_signals):
-        """Test that all signals (including HOLD) are logged"""
         result = engine.run_simulation(sample_data, sample_signals)
-        
-        # Should have one SIGNAL_RECEIVED log for each data point
         signal_logs = [log for log in result.decision_logs if log.decision_type == DecisionType.SIGNAL_RECEIVED]
         assert len(signal_logs) == len(sample_data)
-        
-        # Check that different signal types are logged
         buy_signals = [log for log in signal_logs if log.signal == SignalType.BUY]
         hold_signals = [log for log in signal_logs if log.signal == SignalType.HOLD]
         sell_signals = [log for log in signal_logs if log.signal == SignalType.SELL]
-        
         assert len(buy_signals) == 1  # One BUY signal
         assert len(sell_signals) == 1  # One SELL signal
         assert len(hold_signals) == 8  # Eight HOLD signals
     
     def test_trade_execution_logging(self, engine, sample_data, sample_signals):
-        """Test that trade executions are properly logged"""
         result = engine.run_simulation(sample_data, sample_signals)
-        
-        # Should have TRADE_EXECUTED logs for successful trades
         execution_logs = [log for log in result.decision_logs if log.decision_type == DecisionType.TRADE_EXECUTED]
         assert len(execution_logs) == 2  # One buy, one sell
-        
-        # Check buy trade execution log
         buy_log = next(log for log in execution_logs if log.signal == SignalType.BUY)
         assert "trade executed" in buy_log.outcome
         assert "Successfully executed" in buy_log.reason
         assert 'price' in buy_log.context
         assert 'size' in buy_log.context
         assert 'value' in buy_log.context
-        
-        # Check sell trade execution log
         sell_log = next(log for log in execution_logs if log.signal == SignalType.SELL)
         assert "trade executed" in sell_log.outcome
         assert "Successfully executed" in sell_log.reason
     
     def test_trade_rejection_logging(self, config, sample_data):
-        """Test that rejected trades are logged"""
-        # Create scenario where sell will be rejected (no position)
         dates = pd.date_range(start='2024-01-01', periods=3, freq='D')
         signals = pd.DataFrame({
             'signal': [SignalType.SELL, SignalType.HOLD, SignalType.HOLD]  # Try to sell first
         }, index=dates[:3])
-        
         engine = SimulationEngine(config)
         result = engine.run_simulation(sample_data.iloc[:3], signals)
-        
-        # Should have a TRADE_REJECTED log
         rejection_logs = [log for log in result.decision_logs if log.decision_type == DecisionType.TRADE_REJECTED]
         assert len(rejection_logs) == 1
-        
         rejection_log = rejection_logs[0]
         assert rejection_log.signal == SignalType.SELL
         assert "trade rejected" in rejection_log.outcome
         assert "insufficient funds or no position" in rejection_log.reason
     
     def test_margin_call_logging(self, config, sample_data):
-        """Test that margin calls are properly logged"""
         config.leverage = 2.0
         config.position_size = 0.9  # High risk position
-        
         dates = pd.date_range(start='2024-01-01', periods=10, freq='D')
         signals = [SignalType.BUY] + [SignalType.HOLD] * 9
         signals_df = pd.DataFrame({'signal': signals}, index=dates)
-        
-        # Create severe price drop to trigger margin call
         data = sample_data.copy()
         data.loc[dates[5], 'Close'] = 10.0  # 90% price drop
-        
         engine = SimulationEngine(config)
         result = engine.run_simulation(data, signals_df)
-        
-        # Should have margin call logs
         margin_call_logs = [log for log in result.decision_logs if log.decision_type == DecisionType.MARGIN_CALL_TRIGGERED]
         assert len(margin_call_logs) > 0
-        
         margin_log = margin_call_logs[0]
         assert "Margin call triggered" in margin_log.outcome
         assert "below maintenance margin" in margin_log.reason
@@ -358,10 +327,7 @@ class TestSimulationEngine:
         assert 'position' in margin_log.context
     
     def test_decision_log_context_completeness(self, engine, sample_data, sample_signals):
-        """Test that decision logs contain comprehensive context information"""
         result = engine.run_simulation(sample_data, sample_signals)
-        
-        # Check that all logs have required fields
         for log in result.decision_logs:
             assert hasattr(log, 'timestamp')
             assert hasattr(log, 'decision_type')
@@ -369,7 +335,6 @@ class TestSimulationEngine:
             assert hasattr(log, 'reason')
             assert hasattr(log, 'context')
             
-            # Context should contain market and portfolio information
             if log.decision_type == DecisionType.SIGNAL_RECEIVED:
                 assert 'price' in log.context
                 assert 'cash' in log.context
@@ -377,24 +342,14 @@ class TestSimulationEngine:
                 assert 'equity' in log.context
     
     def test_decision_log_chronological_order(self, engine, sample_data, sample_signals):
-        """Test that decision logs are in chronological order"""
         result = engine.run_simulation(sample_data, sample_signals)
-        
-        # Check that timestamps are in ascending order
         timestamps = [log.timestamp for log in result.decision_logs]
         assert timestamps == sorted(timestamps)
     
     def test_decision_log_trade_correlation(self, engine, sample_data, sample_signals):
-        """Test that decision logs correlate with actual trades"""
         result = engine.run_simulation(sample_data, sample_signals)
-        
-        # Get executed trade logs
         execution_logs = [log for log in result.decision_logs if log.decision_type == DecisionType.TRADE_EXECUTED]
-        
-        # Should match the number of actual trades
         assert len(execution_logs) == len(result.trades)
-        
-        # Check that trade details match between logs and trades
         for i, trade in enumerate(result.trades):
             matching_log = next(log for log in execution_logs if log.timestamp == trade.timestamp)
             assert matching_log.context['price'] == trade.price
@@ -402,25 +357,16 @@ class TestSimulationEngine:
             assert abs(matching_log.context['value'] - trade.value) < 0.01
     
     def test_insufficient_funds_decision_logging(self, config, sample_data, sample_signals):
-        """Test decision logging when funds are insufficient"""
-        config.initial_capital = 50.0  # Very limited capital
+        config.initial_capital = 50.0
         config.position_size = 1.0  # Try to buy more than affordable
         
         engine = SimulationEngine(config)
         result = engine.run_simulation(sample_data, sample_signals)
-        
-        # Should still have decision logs even with limited funds
         assert len(result.decision_logs) > 0
-        
-        # Should have signal received logs
         signal_logs = [log for log in result.decision_logs if log.decision_type == DecisionType.SIGNAL_RECEIVED]
         assert len(signal_logs) == len(sample_data)
-        
-        # May have trade rejections or smaller executions
         execution_logs = [log for log in result.decision_logs if log.decision_type == DecisionType.TRADE_EXECUTED]
         rejection_logs = [log for log in result.decision_logs if log.decision_type == DecisionType.TRADE_REJECTED]
-        
-        # Should have some form of trade decision (either executed or rejected)
         assert len(execution_logs) + len(rejection_logs) >= 1
 
 if __name__ == "__main__":
