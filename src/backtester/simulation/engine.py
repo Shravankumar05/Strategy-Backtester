@@ -11,6 +11,15 @@ class TradeType(str, Enum):
     SELL = "sell"
     BUY = "buy"
 
+class DecisionType(str, Enum):
+    SIGNAL_RECEIVED = "signal_received"
+    TRADE_EXECUTED = "trade_executed"
+    TRADE_REJECTED = "trade_rejected"
+    TRADE_ADJUSTED = "trade_adjusted"
+    MARGIN_CALL_TRIGGERED = "margin_call_triggered"
+    POSITION_SIZING = "position_sizing"
+    RISK_CHECK = "risk_check"
+
 class Trade(BaseModel):
     timestamp: datetime
     type: TradeType
@@ -21,9 +30,18 @@ class Trade(BaseModel):
     slippage: float
     pnl: Optional[float] = None
 
+class DecisionLog(BaseModel):
+    timestamp: datetime
+    decision_type: DecisionType
+    signal: Optional[SignalType] = None
+    context: Dict[str, Any] = Field(default_factory=dict)
+    outcome: str
+    reason: str
+
 class SimulationResult(BaseModel):
     equity_curve: pd.DataFrame
     trades: List[Trade]
+    decision_logs: List[DecisionLog]
     metrics: Dict[str, float]
 
     class Config:
@@ -40,6 +58,7 @@ class SimulationEngine:
         self.equity = self.config.initial_capital
         self.trades = []
         self.equity_curve = []
+        self.decision_logs = []
         self.current_price = None
         self.position_cost_basis = 0.0
     
@@ -61,10 +80,30 @@ class SimulationEngine:
             for idx, row in data.iterrows():
                 self.current_price = row['Close']
                 signal = signals.loc[idx, 'signal']
+                
+                signal_name = signal.name if hasattr(signal, 'name') else str(signal)
+                self._log_decision(timestamp=idx, decision_type=DecisionType.SIGNAL_RECEIVED, signal=signal,
+                    context={
+                        'price': self.current_price,
+                        'cash': self.cash,
+                        'position': self.position,
+                        'equity': self.cash + (self.position * self.current_price)
+                    }, outcome="Signal processed", reason=f"Received {signal_name} signal at price {self.current_price}")
+                
                 if signal != SignalType.HOLD:
                     self._execute_trade(timestamp=idx, price=self.current_price, signal=signal)
+                
                 self.equity = self.cash + (self.position * self.current_price)
                 if self._check_margin_call():
+                    self._log_decision(timestamp=idx, decision_type=DecisionType.MARGIN_CALL_TRIGGERED,
+                        context={
+                            'price': self.current_price,
+                            'cash': self.cash,
+                            'position': self.position,
+                            'equity': self.equity,
+                            'position_cost_basis': self.position_cost_basis
+                        }, outcome="Margin call triggered", reason=f"Equity ({self.equity:.2f}) below maintenance margin requirement")
+                    
                     if self.position != 0:
                         close_signal = SignalType.SELL if self.position > 0 else SignalType.BUY
                         self._execute_trade(timestamp=idx, price=self.current_price, signal=close_signal, margin_call=True)
@@ -81,17 +120,46 @@ class SimulationEngine:
             equity_df = pd.DataFrame(self.equity_curve)
             equity_df.set_index('timestamp', inplace=True)
             metrics = self._calculate_metrics(equity_df)
-            return SimulationResult(equity_curve=equity_df, trades=self.trades, metrics=metrics)
+            return SimulationResult(equity_curve=equity_df, trades=self.trades, decision_logs=self.decision_logs, metrics=metrics)
         
         except Exception as e:
             raise SimulationError(f"Simulation failed: {str(e)}")
     
+    def _log_decision(self, timestamp: datetime, decision_type: DecisionType, outcome: str, reason: str, signal: Optional[SignalType] = None, context: Optional[Dict[str, Any]] = None) -> None:
+        self.decision_logs.append(DecisionLog(timestamp=timestamp, decision_type=decision_type, signal=signal, context=context or {}, outcome=outcome, reason=reason))
+    
     def _execute_trade(self, timestamp: datetime, price: float, signal: SignalType, margin_call: bool = False) -> None:
+        initial_trades_count = len(self.trades)
         if signal == SignalType.BUY:
             self._execute_buy_trade(timestamp, price, margin_call)
-        
         elif signal == SignalType.SELL:
             self._execute_sell_trade(timestamp, price, margin_call)
+        
+        if len(self.trades) > initial_trades_count:
+            executed_trade = self.trades[-1]
+            self._log_decision(timestamp=timestamp, decision_type=DecisionType.TRADE_EXECUTED, signal=signal,
+                context={
+                    'price': price,
+                    'size': executed_trade.size,
+                    'value': executed_trade.value,
+                    'commission': executed_trade.commission,
+                    'slippage': executed_trade.slippage,
+                    'margin_call': margin_call
+                },
+                outcome=f"{signal.name if hasattr(signal, 'name') else str(signal)} trade executed",
+                reason=f"Successfully executed {executed_trade.size:.6f} units at ${price:.2f}"
+            )
+        else:
+            self._log_decision(timestamp=timestamp, decision_type=DecisionType.TRADE_REJECTED, signal=signal,
+                context={
+                    'price': price,
+                    'cash': self.cash,
+                    'position': self.position,
+                    'margin_call': margin_call
+                },
+                outcome=f"{signal.name if hasattr(signal, 'name') else str(signal)} trade rejected",
+                reason="Trade rejected due to insufficient funds or no position"
+            )
     
     def _execute_buy_trade(self, timestamp: datetime, price: float, margin_call: bool = False) -> None:
         if self.config.position_sizing == PositionSizing.FIXED_FRACTION:
