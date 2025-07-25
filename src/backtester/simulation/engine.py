@@ -6,6 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from .config import SimulationConfig, PositionSizing, SimulationError
 from ..strategy.strategy import SignalType
+from ..metrics.performance import PerformanceMetrics
 
 class TradeType(str, Enum):
     SELL = "sell"
@@ -23,12 +24,14 @@ class DecisionType(str, Enum):
 class Trade(BaseModel):
     timestamp: datetime
     type: TradeType
-    price: float
+    entry_price: float
+    exit_price: Optional[float] = None
     size: float
     value: float
     commission: float
     slippage: float
     pnl: Optional[float] = None
+    duration: Optional[int] = None
 
 class DecisionLog(BaseModel):
     timestamp: datetime
@@ -120,6 +123,31 @@ class SimulationEngine:
             equity_df = pd.DataFrame(self.equity_curve)
             equity_df.set_index('timestamp', inplace=True)
             metrics = self._calculate_metrics(equity_df)
+            
+            if self.position != 0:
+                final_signal = SignalType.SELL if self.position > 0 else SignalType.BUY
+                liquidation_size = float(abs(self.position))
+                liquidation_value = float(abs(self.position * self.current_price))
+                liquidation_price = float(self.current_price)
+                
+                self._execute_trade(timestamp=idx, price=self.current_price, signal=final_signal)
+                self._log_decision(
+                    timestamp=idx,
+                    decision_type=DecisionType.TRADE_EXECUTED,
+                    signal=final_signal,
+                    context={
+                        'price': liquidation_price,
+                        'liquidated_position': liquidation_size,
+                        'liquidation_value': liquidation_value
+                    },
+                    outcome="Final position liquidated",
+                    reason="End of simulation liquidation"
+                )
+                
+                metrics['final_liquidation_size'] = liquidation_size
+                metrics['final_liquidation_price'] = liquidation_price
+                metrics['final_liquidation_value'] = liquidation_value
+            
             return SimulationResult(equity_curve=equity_df, trades=self.trades, decision_logs=self.decision_logs, metrics=metrics)
         
         except Exception as e:
@@ -204,7 +232,7 @@ class SimulationEngine:
         self.cash -= required_cash
         self.position_cost_basis += total_cost
         
-        self.trades.append(Trade(timestamp=timestamp, type=TradeType.BUY, price=price, size=size, value=value, commission=commission, slippage=slippage_cost, pnl=None))
+        self.trades.append(Trade(timestamp=timestamp, type=TradeType.BUY, entry_price=price, exit_price=None, size=size, value=value, commission=commission, slippage=slippage_cost, pnl=None, duration=None))
     
     def _execute_sell_trade(self, timestamp: datetime, price: float, margin_call: bool = False) -> None:
         if self.position <= 0:
@@ -231,7 +259,15 @@ class SimulationEngine:
         self.position -= size
         self.cash += total_proceeds
         self.position_cost_basis -= cost_of_sold_position
-        self.trades.append(Trade(timestamp=timestamp, type=TradeType.SELL, price=price, size=size, value=value, commission=commission, slippage=slippage_cost, pnl=pnl))
+
+        for trade in reversed(self.trades):
+            if trade.type == TradeType.BUY and trade.exit_price is None:
+                duration = (timestamp - trade.timestamp).days
+                trade.exit_price = price
+                trade.duration = max(1, duration)
+                break
+
+        self.trades.append(Trade(timestamp=timestamp, type=TradeType.SELL, entry_price=price, exit_price=price, size=size, value=value, commission=commission, slippage=slippage_cost, pnl=pnl, duration=1))
     
     def _calculate_commission(self, value: float) -> float:
         return value * self.config.transaction_cost
@@ -275,4 +311,6 @@ class SimulationEngine:
         equity_df['drawdown_pct'] = equity_df['drawdown'] / equity_df['peak']
         metrics['max_drawdown'] = equity_df['drawdown'].max()
         metrics['max_drawdown_pct'] = equity_df['drawdown_pct'].max()
+        risk_metrics = PerformanceMetrics.calculate_all_risk_metrics(equity_curve=equity_df['equity'], risk_free_rate=0.02, periods_per_year=252)
+        metrics.update(risk_metrics)
         return metrics

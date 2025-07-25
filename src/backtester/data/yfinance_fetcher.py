@@ -1,18 +1,16 @@
 import yfinance as yf
 import pandas as pd
 from datetime import date
-import asyncio
-from typing import Optional, Dict, Any
+from typing import Dict
 from .fetcher import DataFetcher, DataError
 from .cache_manager import CacheManager
-
 
 class YFinanceDataFetcher(DataFetcher):
     def __init__(self, cache_manager=None):
         self.cache_manager = cache_manager
         self._valid_symbols_cache: Dict[str, bool] = {}
     
-    async def fetch_ohlcv(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
+    def fetch_ohlcv(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
         if not self.validate_symbol(symbol):
             raise DataError(f"Invalid symbol: {symbol}")
         
@@ -25,8 +23,7 @@ class YFinanceDataFetcher(DataFetcher):
                 return cached_data
         
         try:
-            loop = asyncio.get_event_loop()
-            df = await loop.run_in_executor(None, lambda: yf.download(symbol, start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'), progress=False))
+            df = yf.download(symbol, start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'), progress=False)
             
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)

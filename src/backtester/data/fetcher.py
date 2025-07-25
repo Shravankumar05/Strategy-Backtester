@@ -3,13 +3,12 @@ from datetime import date
 from typing import Optional
 import pandas as pd
 
-
 class DataError(Exception):
     pass
 
 class DataFetcher(ABC): 
     @abstractmethod
-    async def fetch_ohlcv(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
+    def fetch_ohlcv(self, symbol: str, start_date: date, end_date: date) -> pd.DataFrame:
         pass
     
     @abstractmethod
@@ -20,8 +19,11 @@ class DataFetcher(ABC):
         if start_date > end_date:
             raise ValueError(f"Start date ({start_date}) cannot be after end date ({end_date})")
         
-        if start_date.year != 2024 or end_date.year != 2024: # limiting the dates to 2024 for now but this can be changed easily in the future
-            raise ValueError("Date range must be within 2024")
+        if start_date.year < 2000:
+            raise ValueError("Start date must be from year 2000 onwards")
+        
+        if end_date > date.today():
+            raise ValueError("End date cannot be in the future")
     
     def _validate_dataframe(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
         if df.empty:
