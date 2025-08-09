@@ -16,6 +16,7 @@ try:
     from backtester.simulation.config import SimulationConfig
     from backtester.ui.components.progress_indicators import ProgressManager
     from backtester.ui.utils.session_state import initialize_session_state, get_session_state, set_session_state
+    from backtester.ui.components.alpha_news_ui import render_alpha_news_tab
 except ImportError as e:
     st.error(f"❌ Import Error: {e}")
     st.error("Please ensure all required modules are properly installed and the application is run from the correct directory.")
@@ -126,6 +127,7 @@ def render_navigation():
         "📊 Results", 
         "📈 Charts", 
         "📋 Trade Log",
+        "📰 News Sentiment",
         "ℹ️ About"
     ])
     return tabs
@@ -1072,7 +1074,10 @@ def main():
     with tabs[3]:  # Trade Log
         render_trade_log_tab()
     
-    with tabs[4]:  # About
+    with tabs[4]:  # News Sentiment
+        render_alpha_news_tab()
+    
+    with tabs[5]:  # About
         render_about_tab()
     
     # Footer
