@@ -546,6 +546,24 @@ class PerformanceMetrics:
         }
     
     @staticmethod
+    def calculate_var(returns: pd.Series, confidence_level: float = 0.95) -> float:
+        if len(returns) == 0:
+            return 0.0
+        var = -np.percentile(returns, (1 - confidence_level) * 100)
+        return float(var)
+
+    @staticmethod
+    def calculate_cvar(returns: pd.Series, confidence_level: float = 0.95) -> float:
+        if len(returns) == 0:
+            return 0.0
+        var = PerformanceMetrics.calculate_var(returns, confidence_level)
+        tail_returns = returns[returns < -var]
+        if len(tail_returns) == 0:
+            return 0.0
+        cvar = -tail_returns.mean()
+        return float(cvar)
+
+    @staticmethod
     def calculate_all_metrics(equity_curve: pd.Series, trades: List, risk_free_rate: float = 0.0, periods_per_year: int = 252) -> Dict[str, float]:
         metrics = {}
         
@@ -559,6 +577,8 @@ class PerformanceMetrics:
             metrics['cagr'] = PerformanceMetrics.calculate_cagr(equity_curve, periods_per_year)
             metrics['max_drawdown'] = PerformanceMetrics.calculate_max_drawdown(equity_curve)
             metrics['max_drawdown_duration'] = PerformanceMetrics.calculate_max_drawdown_duration(equity_curve)
+            metrics['var_95'] = PerformanceMetrics.calculate_var(returns, 0.95) * 100
+            metrics['cvar_95'] = PerformanceMetrics.calculate_cvar(returns, 0.95) * 100
             
         else:
             metrics.update({
@@ -568,7 +588,9 @@ class PerformanceMetrics:
                 'total_return': 0.0,
                 'cagr': 0.0,
                 'max_drawdown': 0.0,
-                'max_drawdown_duration': 0
+                'max_drawdown_duration': 0,
+                'var_95': 0.0,
+                'cvar_95': 0.0
             })
         
         if trades and len(trades) > 0:

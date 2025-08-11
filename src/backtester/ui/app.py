@@ -437,7 +437,7 @@ def run_backtest():
             
             set_session_state("backtest_results", backtest_results)
         
-        st.success("✅ Backtest completed successfully!")
+        st.success("✅ Backtest completed successfully! Check the Results and Charts tabs.")
         st.balloons()
         
     except Exception as e:
@@ -604,17 +604,19 @@ def render_results_tab():
     with col3:
         st.metric(
             "Outperformance",
-            f"{outperformance:.1f}%",
-            delta=f"{outperformance:.1f}%",
+            f"{outperformance:+.1f}%",
+            delta=f"{outperformance:+.1f}%",
             delta_color="normal" if outperformance >= 0 else "inverse"
         )
     
     with col4:
         sharpe_ratio = metrics.get("sharpe_ratio", 0.0)
+        sharpe_status = "Good" if sharpe_ratio > 1.0 else "Poor"
         st.metric(
             "Sharpe Ratio",
             f"{sharpe_ratio:.2f}",
-            delta="Good" if sharpe_ratio > 1.0 else "Poor"
+            delta=sharpe_status,
+            delta_color="normal" if sharpe_ratio > 1.0 else "inverse"
         )
     
     with col5:
@@ -622,11 +624,31 @@ def render_results_tab():
         st.metric(
             "Max Drawdown",
             f"{max_drawdown:.1f}%",
-            delta=f"-{max_drawdown:.1f}%"
+            delta=f"-{max_drawdown:.1f}%",
+            delta_color="inverse"  # Always show as red since drawdown is negative
         )
     
+    # Add VaR and CVaR metrics in a new row
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
+        var_95 = metrics.get("var_95", 0.0)
+        st.metric(
+            "Value at Risk (95%)",
+            f"{var_95:.2f}%",
+            delta=f"{var_95:+.2f}%",
+            delta_color="inverse" if var_95 < 0 else "normal"
+        )
+    
+    with col2:
+        cvar_95 = metrics.get("cvar_95", 0.0)
+        st.metric(
+            "Conditional VaR (95%)",
+            f"{cvar_95:.2f}%",
+            delta=f"{cvar_95:+.2f}%",
+            delta_color="inverse" if cvar_95 < 0 else "normal"
+        )
+    
+    with col3:
         win_rate = metrics.get("win_rate", 0.0) * 100  # Convert to percentage
         st.metric(
             "Win Rate",

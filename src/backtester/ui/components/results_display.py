@@ -67,7 +67,19 @@ def render_metrics_overview(results: Dict[str, Any]) -> None:
     with col4:
         volatility = results.get("volatility", 0)
         st.metric("Volatility", f"{volatility:.1f}%")
-
+    
+    # Add VaR and CVaR metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        var_95 = results.get("var_95", 0)
+        st.metric("Value at Risk (95%)", f"{var_95:.2f}%", delta=f"-{var_95:.2f}%", delta_color="inverse")
+    with col2:
+        cvar_95 = results.get("cvar_95", 0)
+        st.metric("Conditional VaR (95%)", f"{cvar_95:.2f}%", delta=f"-{cvar_95:.2f}%", delta_color="inverse")
+    with col3:
+        pass  # Empty column for alignment
+    with col4:
+        pass  # Empty column for alignment
 
 def render_detailed_metrics(results: Dict[str, Any]) -> None:
     with st.expander("📈 Return Metrics", expanded=False):
