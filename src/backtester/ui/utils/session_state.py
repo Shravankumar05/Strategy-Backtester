@@ -34,6 +34,10 @@ def initialize_session_state():
         "bb_std_multiplier": 2.0,
         "bb_buy_threshold": 0.0,
         "bb_sell_threshold": 0.0,
+        "stoch_k_period": 14,
+        "stoch_d_period": 3,
+        "stoch_oversold": 20.0,
+        "stoch_overbought": 80.0,
         
         # Execution settings
         "transaction_cost": 0.001,  # 0.1%
@@ -151,6 +155,13 @@ def _get_strategy_params() -> Dict[str, Any]:
             "std_multiplier": get_session_state("bb_std_multiplier"),
             "buy_threshold": get_session_state("bb_buy_threshold"),
             "sell_threshold": get_session_state("bb_sell_threshold"),
+        }
+    elif strategy_type == "Stochastic Oscillator":
+        return {
+            "k_period": get_session_state("stoch_k_period"),
+            "d_period": get_session_state("stoch_d_period"),
+            "oversold_level": get_session_state("stoch_oversold"),
+            "overbought_level": get_session_state("stoch_overbought"),
         }
     else:  # Buy and Hold
         return {}

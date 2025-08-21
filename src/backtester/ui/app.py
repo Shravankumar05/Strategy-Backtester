@@ -13,6 +13,7 @@ try:
     from backtester.strategy.ma_crossover import MovingAverageCrossoverStrategy
     from backtester.strategy.rsi_strategy import RSIStrategy
     from backtester.strategy.bollinger_bands import BollingerBandsStrategy
+    from backtester.strategy.stochastic_oscillator import StochasticOscillatorStrategy
     from backtester.simulation.engine import SimulationEngine
     from backtester.simulation.config import SimulationConfig
     from backtester.ui.components.progress_indicators import ProgressManager
@@ -220,12 +221,12 @@ def render_strategy_settings():
         
         strategy_type = st.selectbox(
             "Strategy Type",
-            options=["Moving Average Crossover", "RSI Strategy", "Bollinger Bands", "Buy and Hold"],
+            options=["Moving Average Crossover", "RSI Strategy", "Bollinger Bands", "Stochastic Oscillator", "Buy and Hold"],
             index=get_session_state("strategy_index", 0),
             help="Select the trading strategy to backtest"
         )
         set_session_state("strategy_type", strategy_type)
-        set_session_state("strategy_index", ["Moving Average Crossover", "RSI Strategy", "Bollinger Bands", "Buy and Hold"].index(strategy_type))
+        set_session_state("strategy_index", ["Moving Average Crossover", "RSI Strategy", "Bollinger Bands", "Stochastic Oscillator", "Buy and Hold"].index(strategy_type))
         
         if strategy_type == "Moving Average Crossover":
             col1, col2 = st.columns(2)
@@ -329,6 +330,53 @@ def render_strategy_settings():
                     help="Distance from upper band to trigger sell (0 = touch band)"
                 )
                 set_session_state("bb_sell_threshold", bb_sell_threshold)
+        
+        elif strategy_type == "Stochastic Oscillator":
+            col1, col2 = st.columns(2)
+            with col1:
+                stoch_k_period = st.number_input(
+                    "K Period",
+                    min_value=5,
+                    max_value=50,
+                    value=get_session_state("stoch_k_period", 14),
+                    help="Period for %K calculation (fast stochastic)"
+                )
+                set_session_state("stoch_k_period", stoch_k_period)
+                
+                stoch_oversold = st.number_input(
+                    "Oversold Level",
+                    min_value=5.0,
+                    max_value=40.0,
+                    value=get_session_state("stoch_oversold", 20.0),
+                    step=1.0,
+                    format="%.1f",
+                    help="Level below which asset is considered oversold"
+                )
+                set_session_state("stoch_oversold", stoch_oversold)
+            
+            with col2:
+                stoch_d_period = st.number_input(
+                    "D Period",
+                    min_value=1,
+                    max_value=10,
+                    value=get_session_state("stoch_d_period", 3),
+                    help="Period for %D smoothing (slow stochastic)"
+                )
+                set_session_state("stoch_d_period", stoch_d_period)
+                
+                stoch_overbought = st.number_input(
+                    "Overbought Level",
+                    min_value=60.0,
+                    max_value=95.0,
+                    value=get_session_state("stoch_overbought", 80.0),
+                    step=1.0,
+                    format="%.1f",
+                    help="Level above which asset is considered overbought"
+                )
+                set_session_state("stoch_overbought", stoch_overbought)
+            
+            if stoch_oversold >= stoch_overbought:
+                st.error("Oversold level must be less than overbought level")
         
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -557,6 +605,13 @@ def create_strategy_from_config():
         bb_sell_threshold = get_session_state("bb_sell_threshold", 0.0)
         return BollingerBandsStrategy(bb_period, bb_std_multiplier, bb_buy_threshold, bb_sell_threshold)
     
+    elif strategy_type == "Stochastic Oscillator":
+        stoch_k_period = get_session_state("stoch_k_period", 14)
+        stoch_d_period = get_session_state("stoch_d_period", 3)
+        stoch_oversold = get_session_state("stoch_oversold", 20.0)
+        stoch_overbought = get_session_state("stoch_overbought", 80.0)
+        return StochasticOscillatorStrategy(stoch_k_period, stoch_d_period, stoch_oversold, stoch_overbought)
+    
     elif strategy_type == "Buy and Hold":
         return MovingAverageCrossoverStrategy(1, 2)  # Will essentially buy and hold
     
@@ -603,8 +658,15 @@ def render_results_tab():
         size = metrics['final_liquidation_size']
         price = metrics['final_liquidation_price']
         value = metrics['final_liquidation_value']
-        st.info(f"🔄 Final Position Liquidation: {size:.2f} shares @ ${price:.2f} " + 
-                f"(Value: ${value:.2f})", icon="ℹ️")
+        position_type = "BUY" if size > 0 else "SELL"
+        
+        st.warning(f"🔄 **End-of-Simulation Position Liquidation**\n\n"
+                  f"At the end of the simulation, any open {position_type} position was automatically liquidated:\n"
+                  f"• Position Size: {abs(size):.6f} shares\n"
+                  f"• Liquidation Price: ${price:.2f}\n"
+                  f"• Total Value: ${value:.2f}\n\n"
+                  f"This is standard practice to close all positions and calculate final portfolio value.", 
+                  icon="⚠️")
     
     equity_curve_df = results.get("equity_curve")
     if equity_curve_df is not None and len(equity_curve_df) > 0:
