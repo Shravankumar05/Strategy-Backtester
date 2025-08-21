@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import json
 from datetime import datetime, date
 from typing import Dict, Any, Optional
 import traceback
@@ -14,6 +15,7 @@ try:
     from backtester.strategy.rsi_strategy import RSIStrategy
     from backtester.strategy.bollinger_bands import BollingerBandsStrategy
     from backtester.strategy.stochastic_oscillator import StochasticOscillatorStrategy
+    from backtester.strategy.custom_strategy import CustomStrategy
     from backtester.simulation.engine import SimulationEngine
     from backtester.simulation.config import SimulationConfig
     from backtester.ui.components.progress_indicators import ProgressManager
@@ -221,12 +223,12 @@ def render_strategy_settings():
         
         strategy_type = st.selectbox(
             "Strategy Type",
-            options=["Moving Average Crossover", "RSI Strategy", "Bollinger Bands", "Stochastic Oscillator", "Buy and Hold"],
+            options=["Moving Average Crossover", "RSI Strategy", "Bollinger Bands", "Stochastic Oscillator", "Custom Strategy", "Buy and Hold"],
             index=get_session_state("strategy_index", 0),
             help="Select the trading strategy to backtest"
         )
         set_session_state("strategy_type", strategy_type)
-        set_session_state("strategy_index", ["Moving Average Crossover", "RSI Strategy", "Bollinger Bands", "Stochastic Oscillator", "Buy and Hold"].index(strategy_type))
+        set_session_state("strategy_index", ["Moving Average Crossover", "RSI Strategy", "Bollinger Bands", "Stochastic Oscillator", "Custom Strategy", "Buy and Hold"].index(strategy_type))
         
         if strategy_type == "Moving Average Crossover":
             col1, col2 = st.columns(2)
@@ -378,7 +380,250 @@ def render_strategy_settings():
             if stoch_oversold >= stoch_overbought:
                 st.error("Oversold level must be less than overbought level")
         
+        elif strategy_type == "Custom Strategy":
+            render_custom_strategy_ui()
+        
         st.markdown('</div>', unsafe_allow_html=True)
+
+def render_custom_strategy_ui():
+    """Render the custom strategy configuration UI"""
+    st.info("🎯 **Custom Strategy Builder** - Create your own trading strategy using technical indicators and rules")
+    
+    # Strategy Name and Description
+    col1, col2 = st.columns(2)
+    with col1:
+        strategy_name = st.text_input(
+            "Strategy Name",
+            value=get_session_state("custom_strategy_name", "My Custom Strategy"),
+            help="Give your strategy a descriptive name"
+        )
+        set_session_state("custom_strategy_name", strategy_name)
+    
+    with col2:
+        strategy_description = st.text_area(
+            "Description",
+            value=get_session_state("custom_strategy_description", "Custom trading strategy"),
+            height=100,
+            help="Describe what your strategy does"
+        )
+        set_session_state("custom_strategy_description", strategy_description)
+    
+    # Simplified UI for now - focus on JSON editor
+    st.markdown("### 📝 Strategy Configuration")
+    
+    # Get current strategy configuration
+    default_strategy = {
+        "name": strategy_name,
+        "description": strategy_description,
+        "indicators": {
+            "rsi_14": {
+                "type": "rsi",
+                "window": 14,
+                "source": "Close"
+            },
+            "sma_20": {
+                "type": "sma",
+                "window": 20,
+                "source": "Close"
+            }
+        },
+        "rules": [
+            {
+                "conditions": [
+                    {
+                        "indicator": "rsi_14",
+                        "operator": "<",
+                        "value": 30
+                    }
+                ],
+                "action": "buy"
+            },
+            {
+                "conditions": [
+                    {
+                        "indicator": "rsi_14",
+                        "operator": ">",
+                        "value": 70
+                    }
+                ],
+                "action": "sell"
+            }
+        ]
+    }
+    
+    current_json = get_session_state("custom_strategy_json", "")
+    
+    # If no JSON is stored, use the default strategy
+    if not current_json.strip():
+        current_json = json.dumps(default_strategy, indent=2)
+        set_session_state("custom_strategy_json", current_json)
+    
+    # JSON Editor
+    strategy_json = st.text_area(
+        "Strategy Configuration (JSON)",
+        value=current_json,
+        height=400,
+        help="Define your custom strategy using JSON format. See documentation below for examples."
+    )
+    
+    # Validate and save JSON
+    try:
+        strategy_config = json.loads(strategy_json)
+        if validate_custom_strategy_config(strategy_config):
+            set_session_state("custom_strategy_json", strategy_json)
+            st.success("✅ Strategy configuration is valid!")
+        else:
+            st.error("❌ Invalid strategy configuration. Please check the format.")
+    except json.JSONDecodeError as e:
+        st.error(f"❌ Invalid JSON format: {str(e)}")
+    
+    # Documentation
+    with st.expander("📖 Strategy Configuration Guide", expanded=False):
+        st.markdown("""
+        **Strategy JSON Format:**
+        ```json
+        {
+          "name": "Strategy Name",
+          "description": "Strategy description",
+          "indicators": {
+            "indicator_name": {
+              "type": "sma|ema|rsi|macd|bollinger|atr",
+              "window": 14,
+              "source": "Close"
+            }
+          },
+          "rules": [
+            {
+              "conditions": [
+                {
+                  "indicator": "rsi_14",
+                  "operator": "<|>|<=|>=|==|!=",
+                  "value": 30
+                }
+              ],
+              "action": "buy|sell|hold"
+            }
+          ]
+        }
+        ```
+        
+        **Available Indicators:**
+        - `sma`: Simple Moving Average (params: window, source)
+        - `ema`: Exponential Moving Average (params: window, source)
+        - `rsi`: Relative Strength Index (params: window, source)
+        - `macd`: MACD (params: fast_period, slow_period, signal_period, source)
+        - `bollinger`: Bollinger Bands (params: window, num_std, source)
+        - `atr`: Average True Range (params: window)
+        
+        **MACD Output Columns:**
+        - `{name}_line`: MACD line
+        - `{name}_signal`: Signal line
+        - `{name}_hist`: Histogram
+        
+        **Bollinger Bands Output Columns:**
+        - `{name}_upper`: Upper band
+        - `{name}_middle`: Middle band (SMA)
+        - `{name}_lower`: Lower band
+        
+        **Basic Price Data:**
+        - `Open`, `High`, `Low`, `Close`, `Volume`
+        
+        **Example Strategies:**
+        
+        *RSI Mean Reversion:*
+        ```json
+        {
+          "indicators": {
+            "rsi_14": {"type": "rsi", "window": 14, "source": "Close"}
+          },
+          "rules": [
+            {
+              "conditions": [{"indicator": "rsi_14", "operator": "<", "value": 30}],
+              "action": "buy"
+            },
+            {
+              "conditions": [{"indicator": "rsi_14", "operator": ">", "value": 70}],
+              "action": "sell"
+            }
+          ]
+        }
+        ```
+        
+        *Moving Average Crossover:*
+        ```json
+        {
+          "indicators": {
+            "sma_short": {"type": "sma", "window": 20, "source": "Close"},
+            "sma_long": {"type": "sma", "window": 50, "source": "Close"}
+          },
+          "rules": [
+            {
+              "conditions": [{"indicator": "sma_short", "operator": ">", "value": "sma_long"}],
+              "action": "buy"
+            },
+            {
+              "conditions": [{"indicator": "sma_short", "operator": "<", "value": "sma_long"}],
+              "action": "sell"
+            }
+          ]
+        }
+        ```
+        """)
+
+def validate_custom_strategy_config(config):
+    """Validate custom strategy configuration"""
+    try:
+        # Check required fields
+        required_fields = ["rules"]
+        for field in required_fields:
+            if field not in config:
+                return False
+        
+        # Validate rules
+        if not isinstance(config["rules"], list) or not config["rules"]:
+            return False
+        
+        for rule in config["rules"]:
+            if not isinstance(rule, dict):
+                return False
+            
+            if "conditions" not in rule or "action" not in rule:
+                return False
+            
+            if rule["action"] not in ["buy", "sell", "hold"]:
+                return False
+            
+            if not isinstance(rule["conditions"], list) or not rule["conditions"]:
+                return False
+            
+            for condition in rule["conditions"]:
+                if not isinstance(condition, dict):
+                    return False
+                
+                required_cond_fields = ["indicator", "operator", "value"]
+                for field in required_cond_fields:
+                    if field not in condition:
+                        return False
+                
+                if condition["operator"] not in [">", "<", ">=", "<=", "==", "!="]:
+                    return False
+        
+        # Validate indicators if present
+        if "indicators" in config:
+            if not isinstance(config["indicators"], dict):
+                return False
+            
+            for name, indicator in config["indicators"].items():
+                if "type" not in indicator:
+                    return False
+                
+                if indicator["type"] not in ["sma", "ema", "rsi", "macd", "bollinger", "atr"]:
+                    return False
+        
+        return True
+    
+    except Exception:
+        return False
 
 def render_execution_settings():
     with st.container():
@@ -611,6 +856,56 @@ def create_strategy_from_config():
         stoch_oversold = get_session_state("stoch_oversold", 20.0)
         stoch_overbought = get_session_state("stoch_overbought", 80.0)
         return StochasticOscillatorStrategy(stoch_k_period, stoch_d_period, stoch_oversold, stoch_overbought)
+    
+    elif strategy_type == "Custom Strategy":
+        # Get custom strategy configuration from JSON
+        strategy_json = get_session_state("custom_strategy_json", "")
+        
+        # Provide a default configuration if JSON is empty or invalid
+        default_config = {
+            "rules": [
+                {
+                    "conditions": [
+                        {
+                            "indicator": "Close",
+                            "operator": ">",
+                            "value": 100
+                        }
+                    ],
+                    "action": "buy"
+                }
+            ],
+            "indicators": {}
+        }
+        
+        try:
+            if not strategy_json.strip():
+                strategy_config = default_config
+            else:
+                strategy_config = json.loads(strategy_json)
+            
+            # Extract rules and indicators with fallbacks
+            rules = strategy_config.get("rules", default_config["rules"])
+            indicators = strategy_config.get("indicators", default_config["indicators"])
+            
+            # Validate that we have at least some rules
+            if not rules:
+                rules = default_config["rules"]
+            
+            # Create and configure custom strategy
+            custom_strategy = CustomStrategy()
+            custom_strategy.set_rules(rules)
+            custom_strategy.set_indicators(indicators)
+            
+            return custom_strategy
+            
+        except (json.JSONDecodeError, Exception) as e:
+            # Fallback to a simple default strategy if configuration fails
+            st.warning(f"⚠️ Using default custom strategy due to configuration error: {str(e)}")
+            custom_strategy = CustomStrategy()
+            custom_strategy.set_rules(default_config["rules"])
+            custom_strategy.set_indicators(default_config["indicators"])
+            return custom_strategy
     
     elif strategy_type == "Buy and Hold":
         return MovingAverageCrossoverStrategy(1, 2)  # Will essentially buy and hold

@@ -38,6 +38,9 @@ def initialize_session_state():
         "stoch_d_period": 3,
         "stoch_oversold": 20.0,
         "stoch_overbought": 80.0,
+        "custom_strategy_name": "My Custom Strategy",
+        "custom_strategy_description": "Custom trading strategy",
+        "custom_strategy_json": '{"name": "My Custom Strategy", "description": "Custom trading strategy", "indicators": {"rsi_14": {"type": "rsi", "window": 14, "source": "Close"}}, "rules": [{"conditions": [{"indicator": "rsi_14", "operator": "<", "value": 30}], "action": "buy"}, {"conditions": [{"indicator": "rsi_14", "operator": ">", "value": 70}], "action": "sell"}]}',
         
         # Execution settings
         "transaction_cost": 0.001,  # 0.1%
@@ -163,6 +166,34 @@ def _get_strategy_params() -> Dict[str, Any]:
             "oversold_level": get_session_state("stoch_oversold"),
             "overbought_level": get_session_state("stoch_overbought"),
         }
+    elif strategy_type == "Custom Strategy":
+        try:
+            import json
+            strategy_json = get_session_state("custom_strategy_json", "")
+            
+            if not strategy_json.strip():
+                # Return default parameters if no JSON is configured
+                return {
+                    "name": get_session_state("custom_strategy_name", "My Custom Strategy"),
+                    "description": get_session_state("custom_strategy_description", "Custom strategy"),
+                    "rules": [],
+                    "indicators": {}
+                }
+            
+            strategy_config = json.loads(strategy_json)
+            return {
+                "name": strategy_config.get("name", get_session_state("custom_strategy_name", "My Custom Strategy")),
+                "description": strategy_config.get("description", get_session_state("custom_strategy_description", "Custom strategy")),
+                "rules": strategy_config.get("rules", []),
+                "indicators": strategy_config.get("indicators", {})
+            }
+        except (json.JSONDecodeError, Exception):
+            return {
+                "name": get_session_state("custom_strategy_name", "My Custom Strategy"),
+                "description": get_session_state("custom_strategy_description", "Custom strategy"),
+                "rules": [],
+                "indicators": {}
+            }
     else:  # Buy and Hold
         return {}
 
