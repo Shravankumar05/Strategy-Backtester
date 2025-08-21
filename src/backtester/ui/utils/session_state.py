@@ -30,6 +30,10 @@ def initialize_session_state():
         "rsi_period": 14,
         "rsi_overbought": 70,
         "rsi_oversold": 30,
+        "bb_period": 20,
+        "bb_std_multiplier": 2.0,
+        "bb_buy_threshold": 0.0,
+        "bb_sell_threshold": 0.0,
         
         # Execution settings
         "transaction_cost": 0.001,  # 0.1%
@@ -140,6 +144,13 @@ def _get_strategy_params() -> Dict[str, Any]:
             "period": get_session_state("rsi_period"),
             "overbought": get_session_state("rsi_overbought"),
             "oversold": get_session_state("rsi_oversold"),
+        }
+    elif strategy_type == "Bollinger Bands":
+        return {
+            "period": get_session_state("bb_period"),
+            "std_multiplier": get_session_state("bb_std_multiplier"),
+            "buy_threshold": get_session_state("bb_buy_threshold"),
+            "sell_threshold": get_session_state("bb_sell_threshold"),
         }
     else:  # Buy and Hold
         return {}

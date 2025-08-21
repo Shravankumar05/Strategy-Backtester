@@ -12,6 +12,7 @@ try:
     from backtester.data.cache_manager import CacheManager
     from backtester.strategy.ma_crossover import MovingAverageCrossoverStrategy
     from backtester.strategy.rsi_strategy import RSIStrategy
+    from backtester.strategy.bollinger_bands import BollingerBandsStrategy
     from backtester.simulation.engine import SimulationEngine
     from backtester.simulation.config import SimulationConfig
     from backtester.ui.components.progress_indicators import ProgressManager
@@ -219,12 +220,12 @@ def render_strategy_settings():
         
         strategy_type = st.selectbox(
             "Strategy Type",
-            options=["Moving Average Crossover", "RSI Strategy", "Buy and Hold"],
+            options=["Moving Average Crossover", "RSI Strategy", "Bollinger Bands", "Buy and Hold"],
             index=get_session_state("strategy_index", 0),
             help="Select the trading strategy to backtest"
         )
         set_session_state("strategy_type", strategy_type)
-        set_session_state("strategy_index", ["Moving Average Crossover", "RSI Strategy", "Buy and Hold"].index(strategy_type))
+        set_session_state("strategy_index", ["Moving Average Crossover", "RSI Strategy", "Bollinger Bands", "Buy and Hold"].index(strategy_type))
         
         if strategy_type == "Moving Average Crossover":
             col1, col2 = st.columns(2)
@@ -282,6 +283,52 @@ def render_strategy_settings():
                     help="RSI oversold threshold"
                 )
                 set_session_state("rsi_oversold", rsi_oversold)
+        
+        elif strategy_type == "Bollinger Bands":
+            col1, col2 = st.columns(2)
+            with col1:
+                bb_period = st.number_input(
+                    "Period",
+                    min_value=5,
+                    max_value=100,
+                    value=get_session_state("bb_period", 20),
+                    help="Period for moving average calculation"
+                )
+                set_session_state("bb_period", bb_period)
+                
+                bb_buy_threshold = st.number_input(
+                    "Buy Threshold",
+                    min_value=0.0,
+                    max_value=0.3,
+                    value=get_session_state("bb_buy_threshold", 0.0),
+                    step=0.01,
+                    format="%.2f",
+                    help="Distance from lower band to trigger buy (0 = touch band)"
+                )
+                set_session_state("bb_buy_threshold", bb_buy_threshold)
+            
+            with col2:
+                bb_std_multiplier = st.number_input(
+                    "Std Multiplier",
+                    min_value=0.5,
+                    max_value=4.0,
+                    value=get_session_state("bb_std_multiplier", 2.0),
+                    step=0.1,
+                    format="%.1f",
+                    help="Standard deviation multiplier for band width"
+                )
+                set_session_state("bb_std_multiplier", bb_std_multiplier)
+                
+                bb_sell_threshold = st.number_input(
+                    "Sell Threshold", 
+                    min_value=0.0,
+                    max_value=0.3,
+                    value=get_session_state("bb_sell_threshold", 0.0),
+                    step=0.01,
+                    format="%.2f",
+                    help="Distance from upper band to trigger sell (0 = touch band)"
+                )
+                set_session_state("bb_sell_threshold", bb_sell_threshold)
         
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -502,6 +549,13 @@ def create_strategy_from_config():
         rsi_overbought = get_session_state("rsi_overbought", 70)
         rsi_oversold = get_session_state("rsi_oversold", 30)
         return RSIStrategy(rsi_period, rsi_overbought, rsi_oversold)
+    
+    elif strategy_type == "Bollinger Bands":
+        bb_period = get_session_state("bb_period", 20)
+        bb_std_multiplier = get_session_state("bb_std_multiplier", 2.0)
+        bb_buy_threshold = get_session_state("bb_buy_threshold", 0.0)
+        bb_sell_threshold = get_session_state("bb_sell_threshold", 0.0)
+        return BollingerBandsStrategy(bb_period, bb_std_multiplier, bb_buy_threshold, bb_sell_threshold)
     
     elif strategy_type == "Buy and Hold":
         return MovingAverageCrossoverStrategy(1, 2)  # Will essentially buy and hold
