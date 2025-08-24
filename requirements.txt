@@ -2,9 +2,17 @@ streamlit
 pandas
 numpy
 plotly
+kaleido
 yfinance
 requests
 beautifulsoup4
 lxml
 python-dotenv
 pydantic
+scikit-learn>=1.0.0
+xgboost>=1.6.0
+joblib
+duckdb>=0.9.0
+gymnasium>=0.29.0
+stable-baselines3>=2.2.0
+torch>=2.0.0

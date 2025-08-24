@@ -9,7 +9,7 @@ import time
 try:
     from backtester.news.news import News, AlphaNewsError
 except ImportError as e:
-    st.error(f"❌ News module import error: {e}")
+    st.error(f"News module import error: {e}")
     st.error("Please ensure the Alpha Vantage news module is properly installed.")
 
 
@@ -29,13 +29,13 @@ def get_sentiment_color(sentiment_label: str) -> str:
     else:
         return "#add8e6"
 
-def get_sentiment_emoji(sentiment_label: str) -> str:
+def get_sentiment_icon(sentiment_label: str) -> str:
     if sentiment_label in ["Bullish", "Somewhat-Bullish"]:
-        return "🟢"
+        return "▲"
     elif sentiment_label in ["Bearish", "Somewhat-Bearish"]:
-        return "🔴"
+        return "▼"
     else:
-        return "🔵"
+        return "●"
 
 
 def format_date(date_string: str) -> str:
@@ -113,48 +113,67 @@ def render_sentiment_distribution_chart(sentiment_percentages: Dict[str, float])
 
 
 def render_overall_sentiment_card(symbol: str, score: int, confidence: float = 0.8):
-    if score >= 70:
-        color = "#28a745"
-        label = "Very Bullish"
-        emoji = "🌙"
-    elif score >= 55:
-        color = "#17a2b8"
-        label = "Bullish"
-        emoji = "🟢"
-    elif score >= 45:
-        color = "#add8e6"
-        label = "Neutral"
-        emoji = "🔵"
-    elif score >= 30:
-        color = "#fd7e14"
-        label = "Bearish"
-        emoji = "🔴"
-    else:
-        color = "#dc3545"
-        label = "Very Bearish"
-        emoji = "📉"
-    
-    st.markdown(f"""
-    <div style="
-        background: linear-gradient(135deg, {color}20, {color}10);
-        border: 2px solid {color};
-        border-radius: 15px;
-        padding: 2rem;
-        text-align: center;
-        margin: 1rem 0;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    ">
-        <h1 style="color: {color}; margin: 0; font-size: 3rem; font-weight: bold;">
-            {emoji} {score}/100
-        </h1>
-        <h3 style="color: {color}; margin: 0.5rem 0; font-size: 1.5rem;">
-            {label}
-        </h3>
-        <p style="color: #666; margin: 0; font-size: 1rem;">
-            Overall News Sentiment for {symbol}
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <style>
+        .sentiment-card {{
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-left: 5px solid #1e3c72;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            border: 1px solid #e9ecef;
+        }}
+        .sentiment-score {{
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: conic-gradient(
+                #28a745 0% {score}%,
+                #e9ecef {score}% 100%
+            );
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }}
+        .score-value {{
+            background: white;
+            width: 70%;
+            height: 70%;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #1e3c72;
+        }}
+        .sentiment-details p {{
+            margin: 0.5rem 0;
+            color: #495057;
+        }}
+        .sentiment-details strong {{
+            color: #1e3c72;
+        }}
+        </style>
+        <div class="sentiment-card">
+            <h3 style="margin-top: 0; color: #1e3c72;">Overall Sentiment for {symbol}</h3>
+            <div style="display: flex; align-items: center;">
+                <div class="sentiment-score">
+                    <div class="score-value">{score}</div>
+                </div>
+                <div class="sentiment-details">
+                    <p><strong>Sentiment Score:</strong> {score}/100</p>
+                    <p><strong>Confidence:</strong> {confidence*100:.1f}%</p>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )                
 
 
 def render_news_articles_list(articles: List[Dict], ticker: str):
@@ -163,7 +182,7 @@ def render_news_articles_list(articles: List[Dict], ticker: str):
         st.info("No news articles available")
         return
     
-    st.subheader(f"📰 Latest News for {ticker}")
+    st.subheader(f"Latest News for {ticker}")
     st.write(f"**{len(articles)} articles found**")
     
     for i, article in enumerate(articles, 1):
@@ -206,7 +225,7 @@ def render_news_articles_list(articles: List[Dict], ticker: str):
                     display_sentiment_score = None
             
             sentiment_color = get_sentiment_color(display_sentiment_label)
-            sentiment_emoji = get_sentiment_emoji(display_sentiment_label)
+            sentiment_icon = get_sentiment_icon(display_sentiment_label)
             with st.container():
                 col1, col2 = st.columns([1, 8])
                 with col1:
@@ -219,7 +238,7 @@ def render_news_articles_list(articles: List[Dict], ticker: str):
                         border-radius: 8px;
                         height: 100%;
                     ">
-                        <div style="font-size: 2rem;">{sentiment_emoji}</div>
+                        <div style="font-size: 2rem;">{sentiment_icon}</div>
                         <div style="color: {sentiment_color}; font-weight: bold; font-size: 0.9rem;">
                             {display_sentiment_label}
                         </div>
@@ -230,15 +249,15 @@ def render_news_articles_list(articles: List[Dict], ticker: str):
                 
                 with col2:
                     st.markdown(f"### {i}. {title}")
-                    st.markdown(f"🏢 **{source}** | ⏰ {time_published}")
+                    st.markdown(f"**{source}** | {time_published}")
                     
                     if url:
-                        st.markdown(f"🔗 [Read full article]({url})")
+                        st.markdown(f"[Read full article]({url})")
                     
                     # Show summary if available
                     summary = article.get("summary")
                     if summary and len(summary) > 50:
-                        with st.expander("📄 Article Summary"):
+                        with st.expander("Article Summary"):
                             st.write(summary)
             
             st.markdown("---")
@@ -249,8 +268,21 @@ def render_news_articles_list(articles: List[Dict], ticker: str):
 
 
 def render_alpha_news_tab():
-    st.header("📰 Stock News & Sentiment Analysis")
-    st.markdown("Get the latest news and sentiment analysis for any stock using Alpha Vantage")
+    st.markdown("""
+    <div style="
+        background-color: #f8f9fa;
+        color: #1e3c72;
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e9ecef;
+    ">
+        <h1 style="margin: 0; font-size: 2.5rem; font-weight: bold;">Market Sentiment Intelligence</h1>
+        <p style="margin: 1rem 0 0 0; font-size: 1.2rem; opacity: 0.9;">Real-time news analysis and sentiment tracking</p>
+    </div>
+    """, unsafe_allow_html=True)
     col1, col2 = st.columns([3, 1])
     
     with col1:
@@ -273,7 +305,7 @@ def render_alpha_news_tab():
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         analyze_button = st.button(
-            "📈News & Sentiment",
+            "News & Sentiment",
             type="primary",
             use_container_width=True,
             key="alpha_news_btn"
@@ -294,7 +326,7 @@ def render_alpha_news_tab():
                 
                 overall_score, sentiment_percentages = calculate_overall_sentiment_score(articles)
                 render_overall_sentiment_card(symbol, overall_score)
-                tab1, tab2 = st.tabs(["📰 News Articles", "📊 Sentiment Summary"])
+                tab1, tab2 = st.tabs(["News Articles", "Sentiment Summary"])
                 
                 with tab1:
                     st.markdown(f"**Found {len(articles)} articles for {symbol}** (requested: {limit})")
@@ -304,11 +336,11 @@ def render_alpha_news_tab():
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        st.subheader("📊 Sentiment Summary")
+                        st.subheader("Sentiment Summary")
                         
                         for sentiment, percentage in sentiment_percentages.items():
                             color = get_sentiment_color(sentiment)
-                            emoji = get_sentiment_emoji(sentiment)
+                            icon = get_sentiment_icon(sentiment)
                             count = int((percentage / 100) * len(articles))
                             
                             st.markdown(f"""
@@ -319,12 +351,12 @@ def render_alpha_news_tab():
                                 margin: 0.5rem 0;
                                 border-radius: 8px;
                             ">
-                                {emoji} <strong>{sentiment}</strong>: {count} articles ({percentage:.1f}%)
+                                {icon} <strong>{sentiment}</strong>: {count} articles ({percentage:.1f}%)
                             </div>
                             """, unsafe_allow_html=True)
                     
                     with col2:
-                        st.subheader("📈 Distribution Chart")
+                        st.subheader("Distribution Chart")
                         chart = render_sentiment_distribution_chart(sentiment_percentages)
                         if chart:
                             st.plotly_chart(chart, use_container_width=True)

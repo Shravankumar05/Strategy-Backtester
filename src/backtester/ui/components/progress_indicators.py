@@ -1,13 +1,13 @@
 import streamlit as st
 import time
-from typing import Optional, Callable, Any, Dict
+from typing import Optional, Callable, Any, Dict, List
 from contextlib import contextmanager
 from ..utils.session_state import get_session_state, set_session_state, update_backtest_status
 
 class ProgressManager:
     @staticmethod
     @contextmanager
-    def progress_context(title: str, total_steps: int = 100, show_spinner: bool = True, show_progress_bar: bool = True):
+    def progress_context(title: str, description: str = "", total_steps: int = 100, show_spinner: bool = True, show_progress_bar: bool = True):
         progress_state = {
             "current_step": 0,
             "total_steps": total_steps,
@@ -19,13 +19,41 @@ class ProgressManager:
         progress_container = st.empty()
         message_container = st.empty()
         
+        # Apply custom styles
+        st.markdown("""
+        <style>
+        .progress-container {
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-left: 4px solid #1e3c72;
+        }
+        .progress-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #1e3c72;
+        }
+        .progress-message {
+            color: #495057;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
         try:
             with status_container.container():
                 if show_spinner:
-                    st.info(f"🔄 {title}")
+                    st.markdown(f"""
+                    <div class="progress-container">
+                        <div class="progress-title">{title}</div>
+                        <div class="progress-message">Initializing...</div>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             if show_progress_bar:
-                progress_bar = progress_container.progress(0)
+                progress_bar = progress_container.progress(0, text=title)
             else:
                 progress_bar = None
             
@@ -36,22 +64,39 @@ class ProgressManager:
                 
                 if progress_bar:
                     progress_value = min(step / total_steps, 1.0)
-                    progress_bar.progress(progress_value)
+                    progress_bar.progress(progress_value, text=f"{title}: {int(progress_value * 100)}%")
                 
                 current_message = progress_state["message"]
                 percentage = int((step / total_steps) * 100)
-                message_container.text(f"{current_message} ({percentage}%)")
+                message_container.markdown(
+                    f"<div class='progress-message'>{current_message} ({percentage}%)</div>", 
+                    unsafe_allow_html=True
+                )
             
             yield update_progress
             progress_state["status"] = "completed"
-            status_container.success(f"✅ {title} completed successfully!")
+            
+            # Update to success state
+            status_container.markdown(f"""
+            <div class="progress-container" style="border-left-color: #28a745; background-color: #d4edda;">
+                <div class="progress-title">{title} completed successfully</div>
+                <div class="progress-message">Operation completed successfully</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
             if progress_bar:
-                progress_bar.progress(1.0)
+                progress_bar.progress(1.0, text=f"{title}: 100% Complete")
             
             message_container.text("Operation completed (100%)")
             
         except Exception as e:
             progress_state["status"] = "failed"
+            status_container.markdown(f"""
+            <div class="progress-container" style="border-left-color: #dc3545; background-color: #f8d7da;">
+                <div class="progress-title">{title} failed</div>
+                <div class="progress-message">Error: {str(e)}</div>
+            </div>
+            """, unsafe_allow_html=True)
             status_container.error(f"❌ {title} failed: {str(e)}")
             message_container.text(f"Error: {str(e)}")
             raise
@@ -68,25 +113,28 @@ class ProgressManager:
     
     @staticmethod
     def show_progress_bar(value: float, text: Optional[str] = None, format_string: str = "%d%%"):
-        progress_bar = st.progress(value)
         if text:
-            st.text(text)
-        
-        return progress_bar
+            st.markdown(f"<div class='progress-message'>{text}</div>", unsafe_allow_html=True)
+        return st.progress(value, text=text)
     
     @staticmethod
     def show_step_progress(current_step: int, total_steps: int, step_descriptions: Optional[Dict[int, str]] = None):
-        st.subheader(f"Progress: Step {current_step} of {total_steps}")
+        st.markdown(f"<div class='progress-title'>Progress: Step {current_step} of {total_steps}</div>", unsafe_allow_html=True)
         progress_value = (current_step - 1) / total_steps
         st.progress(progress_value)
+        
         if step_descriptions:
             for step_num in range(1, total_steps + 1):
-                if step_num < current_step:
-                    st.write(f"✅ Step {step_num}: {step_descriptions.get(step_num, f'Step {step_num}')}")
-                elif step_num == current_step:
-                    st.write(f"🔄 Step {step_num}: {step_descriptions.get(step_num, f'Step {step_num}')} (In Progress)")
-                else:
-                    st.write(f"⏳ Step {step_num}: {step_descriptions.get(step_num, f'Step {step_num}')}")
+                step_class = "completed" if step_num < current_step else ("current" if step_num == current_step else "pending")
+                step_icon = "✓" if step_num < current_step else ("→" if step_num == current_step else "○")
+                step_text = step_descriptions.get(step_num, f'Step {step_num}')
+                
+                st.markdown(f"""
+                <div class="step-indicator {step_class}">
+                    <span style="margin-right: 10px; font-weight: bold;">{step_icon}</span>
+                    <span>{step_text}</span>
+                </div>
+                """, unsafe_allow_html=True)
     
     @staticmethod
     def show_backtest_progress():
@@ -95,38 +143,70 @@ class ProgressManager:
         message = get_session_state("backtest_message", "")
         
         if status == "not_started":
-            st.info("🔧 Configure your backtest and click 'Run Backtest' to begin")
+            st.markdown("""
+            <div class="progress-container" style="background-color: #e2e3e5; border-left-color: #6c757d;">
+                <div class="progress-title">Ready to Start</div>
+                <div class="progress-message">Configure your backtest and click 'Run Backtest' to begin</div>
+            </div>
+            """, unsafe_allow_html=True)
             return
         
         elif status == "running":
-            st.info("🔄 Backtest in progress...")
-            progress_bar = st.progress(progress / 100.0)
-            st.text(f"{message} ({progress:.1f}%)")
+            st.markdown(f"""
+            <div class="progress-container">
+                <div class="progress-title">Backtest in Progress</div>
+                <div class="progress-message">{message} ({progress:.1f}%)</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.progress(progress / 100.0, text=f"{message} ({progress:.1f}%)")
+            
             if progress > 0:
-                estimated_total_time = 30 # rough time
+                estimated_total_time = 30  # rough estimate
                 elapsed_ratio = progress / 100.0
                 remaining_time = estimated_total_time * (1 - elapsed_ratio)
-                st.text(f"Estimated time remaining: {remaining_time:.0f} seconds") # Botched progress bar method lol
+                st.markdown(f"<div class='progress-message'>Estimated time remaining: {remaining_time:.0f} seconds</div>", 
+                          unsafe_allow_html=True)
         
         elif status == "completed":
-            st.success("✅ Backtest completed successfully!")
-            st.progress(1.0)
+            st.markdown("""
+            <div class="progress-container" style="border-left-color: #28a745; background-color: #d4edda;">
+                <div class="progress-title">Backtest Completed</div>
+                <div class="progress-message">Analysis completed successfully</div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.progress(1.0, text="Analysis complete (100%)")
             
         elif status == "failed":
-            st.error(f"❌ Backtest failed: {message}")
+            st.markdown(f"""
+            <div class="progress-container" style="border-left-color: #dc3545; background-color: #f8d7da;">
+                <div class="progress-title">Backtest Failed</div>
+                <div class="progress-message">{message}</div>
+            </div>
+            """, unsafe_allow_html=True)
         
         else:
-            st.warning(f"⚠️ Unknown status: {status}")
+            st.markdown(f"""
+            <div class="progress-container" style="border-left-color: #ffc107; background-color: #fff3cd;">
+                <div class="progress-title">Unknown Status</div>
+                <div class="progress-message">Current status: {status}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 def simulate_backtest_with_progress():
     steps = ["Fetching historical data", "Validating data quality", "Initializing strategy", "Generating trading signals", "Running simulation", "Calculating performance metrics", "Generating visualizations", "Finalizing results"]
     
-    with ProgressManager.progress_context("Running Backtest", total_steps=len(steps), show_spinner=True, show_progress_bar=True
+    with ProgressManager.progress_context(
+        "Running Backtest", 
+        description="Processing backtest simulation",
+        total_steps=len(steps), 
+        show_spinner=True, 
+        show_progress_bar=True
     ) as update_progress:
         for i, step_description in enumerate(steps, 1):
             update_progress(i, step_description)
-            time.sleep(0.5)  # Simulate processing time lol
+            time.sleep(0.5)  # Simulate processing time
             progress_percentage = (i / len(steps)) * 100
             update_backtest_status("running", progress_percentage, step_description)
 
@@ -147,24 +227,24 @@ def show_data_loading_progress(ticker: str, start_date, end_date):
         status_text.empty()
 
 
-def show_strategy_validation_progress(strategy_config: Dict[str, Any]):
+def show_validation_progress():
     validation_steps = ["Parsing strategy configuration", "Validating rule syntax",  "Checking indicator availability", "Testing rule logic", "Finalizing strategy"]
     progress_container = st.container()
     with progress_container:
-        st.subheader("🔍 Validating Strategy")
+        st.subheader("Validating Strategy")
         for i, step in enumerate(validation_steps, 1):
             progress_value = (i - 1) / len(validation_steps)
             st.progress(progress_value)
             st.text(f"Step {i}/{len(validation_steps)}: {step}")
             time.sleep(0.2)
-            if i == len(validation_steps):
-                st.progress(1.0)
-                st.success("✅ Strategy validation completed!")
+        
+        st.progress(1.0)
+        st.success("Strategy validation completed!")
 
 
 def show_metric_calculation_progress():
     metrics = ["Total Return", "Sharpe Ratio", "Sortino Ratio", "Maximum Drawdown", "Win Rate", "Profit Factor", "Volatility", "CAGR"]
-    st.subheader("📊 Calculating Performance Metrics")
+    st.subheader("Calculating Performance Metrics")
     progress_bar = st.progress(0)
     metric_status = st.empty()
     
@@ -188,40 +268,71 @@ class ProgressIndicatorStyles:
         <style>
         /* Custom progress bar styling */
         .stProgress > div > div > div > div {
-            background: linear-gradient(90deg, #1f77b4 0%, #17a2b8 100%);
+            background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
+            border-radius: 4px;
+            height: 8px;
         }
         /* Loading spinner styling */
         .stSpinner > div {
-            border-top-color: #1f77b4 !important;
+            border-top-color: #1e3c72 !important;
+            width: 2.5rem;
+            height: 2.5rem;
         }
         /* Status message styling */
         .progress-status {
-            font-family: 'Courier New', monospace;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             font-size: 0.9rem;
-            color: #666;
-            text-align: center;
+            color: #495057;
+            text-align: left;
             margin: 0.5rem 0;
+            line-height: 1.5;
         }
         /* Step indicator styling */
         .step-indicator {
             display: flex;
             align-items: center;
             margin: 0.5rem 0;
-            padding: 0.5rem;
-            border-radius: 5px;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
             background: #f8f9fa;
+            border-left: 3px solid #dee2e6;
+            transition: all 0.3s ease;
         }
         .step-indicator.completed {
-            background: #d4edda;
+            background: #f0f9f0;
+            border-left-color: #28a745;
             color: #155724;
         }
         .step-indicator.current {
-            background: #d1ecf1;
-            color: #0c5460;
+            background: #f0f7ff;
+            border-left-color: #1e3c72;
+            color: #0a3d6b;
+            font-weight: 500;
         }
         .step-indicator.pending {
             background: #f8f9fa;
             color: #6c757d;
+            opacity: 0.8;
+        }
+        /* Progress container styles */
+        .progress-container {
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-left: 4px solid #1e3c72;
+        }
+        .progress-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #1e3c72;
+            font-size: 1.1rem;
+        }
+        .progress-message {
+            color: #495057;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+            line-height: 1.5;
         }
         </style>
         """, unsafe_allow_html=True)
@@ -233,11 +344,12 @@ def with_progress(func: Callable, *args, **kwargs) -> Any:
         return func(*args, **kwargs)
 
 
-def show_operation_progress(operation_name: str, steps: list, step_functions: list, show_details: bool = True):
+def execute_with_progress(steps: List[str], step_functions: List[Callable], operation_name: str = "Processing") -> List[Any]:
+    """Execute a series of steps with a progress indicator"""
     if len(steps) != len(step_functions):
         raise ValueError("Number of steps must match number of step functions")
     
-    st.subheader(f"🔄 {operation_name}")
+    st.subheader(f"{operation_name}")
     overall_progress = st.progress(0)
     current_step_text = st.empty()
     results = []
